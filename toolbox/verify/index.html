@@ -1,5 +1,27 @@
 <!DOCTYPE html><html lang="zh-CN"> <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="description" content><title>固件校验 - 工具箱</title><style>:root{--bg: #0f1117;--fg: #e8e8ef;--muted: #9aa0b0;--accent: #4c8dff;--card: #181b24;--border: #262a36}@media(prefers-color-scheme:light){:root{--bg: #ffffff;--fg: #1a1a1a;--muted: #666;--card: #f6f7f9;--border: #e5e7eb}}*{box-sizing:border-box}body{margin:0;font-family:-apple-system,Segoe UI,PingFang SC,Microsoft YaHei,sans-serif;background:var(--bg);color:var(--fg);line-height:1.6}.nav{display:flex;justify-content:space-between;align-items:center;padding:16px 24px;border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--bg);z-index:10}.brand{font-weight:700;color:var(--fg);text-decoration:none;font-size:1.1rem}.nav nav a{color:var(--fg);text-decoration:none;margin-left:18px;opacity:.8}.nav nav a:hover{opacity:1}.container{max-width:820px;margin:0 auto;padding:32px 24px 64px}.hero{text-align:center;padding:48px 0}.hero h1{font-size:2.4rem;margin:0 0 12px}.accent{color:var(--accent)}.sub{color:var(--muted);font-size:1.1rem}.hero-links{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-top:20px}.btn{display:inline-block;padding:10px 20px;background:var(--accent);color:#fff;border-radius:8px;text-decoration:none;font-weight:600;border:none;cursor:pointer;font-size:.95rem}.btn:hover{opacity:.9}.muted{color:var(--muted)}.cards{display:grid;gap:16px;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));margin-top:16px}.card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:20px;color:var(--fg);text-decoration:none}.card h3{margin:0 0 8px}.ver{color:var(--accent);font-size:.9rem}.post-list{list-style:none;padding:0}.post-list li{display:flex;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--border)}.post-list a{color:var(--accent);text-decoration:none}textarea,input,select{width:100%;padding:10px;margin:8px 0;border-radius:8px;border:1px solid var(--border);background:var(--card);color:var(--fg);font-family:inherit;font-size:1rem}pre{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:12px;overflow:auto;word-break:break-all;white-space:pre-wrap}footer{border-top:1px solid var(--border);text-align:center;padding:32px 24px;color:var(--muted)}footer a{color:var(--accent);text-decoration:none}
-</style></head> <body> <header class="nav"> <a class="brand" href="/my-site/">我的网站</a> <nav> <a href="/my-site/">首页</a><a href="/my-site/toolbox/">工具箱</a><a href="/my-site/blog/">博客</a><a href="/my-site/firmware/">固件</a> </nav> </header> <main class="container">  <h1>固件 SHA-256 校验</h1> <p class="muted">选择固件文件，并粘贴发布页给出的 SHA-256，验证完整性。</p> <input type="file" id="file"> <input type="text" id="expected" placeholder="粘贴期望的 SHA-256"> <button class="btn" id="check">校验</button> <pre id="out"></pre>  </main> <footer> <p>© 2026 你的名字 · <a href="/my-site/firmware/">固件</a> · <a href="/my-site/toolbox/">工具箱</a></p> <p class="muted">由 Astro + GitHub Pages 免费托管</p> </footer> </body></html> <script type="module">const o=document.getElementById("file"),a=document.getElementById("expected"),c=document.getElementById("out"),i=document.getElementById("check");async function r(t,e){const n=await crypto.subtle.digest(e,t);return[...new Uint8Array(n)].map(s=>s.toString(16).padStart(2,"0")).join("")}i.addEventListener("click",async()=>{if(!o.files.length){c.textContent="请先选择固件文件";return}try{const t=await o.files[0].arrayBuffer(),e=await r(t,"SHA-256"),n=e.toLowerCase()===a.value.trim().toLowerCase();c.textContent=(n?`✅ 校验通过
-`:`❌ 校验失败
-`)+`实际 SHA-256:
-`+e}catch(t){c.textContent="错误: "+t.message}});</script>
+</style></head> <body> <header class="nav"> <a class="brand" href="/my-site/">我的网站</a> <nav> <a href="/my-site/">首页</a><a href="/my-site/toolbox/">工具箱</a><a href="/my-site/blog/">博客</a><a href="/my-site/firmware/">固件</a> </nav> </header> <main class="container">  <h1>固件 SHA-256 校验</h1> <p class="muted">选择固件文件，并粘贴发布页给出的 SHA-256，验证完整性。</p> <input type="file" id="file"> <input type="text" id="expected" placeholder="粘贴期望的 SHA-256"> <button class="btn" id="check">校验</button> <pre id="out"></pre>  </main> <footer> <p>© 2026 你的名字 · <a href="/my-site/firmware/">固件</a> · <a href="/my-site/toolbox/">工具箱</a></p> <p class="muted">由 Astro + GitHub Pages 免费托管</p> </footer> </body></html> <script>
+  const fileInput = document.getElementById('file');
+  const expected = document.getElementById('expected');
+  const out = document.getElementById('out');
+  const check = document.getElementById('check');
+
+  async function digest(bytes, alg) {
+    const buf = await crypto.subtle.digest(alg, bytes);
+    return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0')).join('');
+  }
+
+  check.addEventListener('click', async () => {
+    if (!fileInput.files.length) {
+      out.textContent = '请先选择固件文件';
+      return;
+    }
+    try {
+      const bytes = await fileInput.files[0].arrayBuffer();
+      const hex = await digest(bytes, 'SHA-256');
+      const ok = hex.toLowerCase() === expected.value.trim().toLowerCase();
+      out.textContent = (ok ? '✅ 校验通过\n' : '❌ 校验失败\n') + '实际 SHA-256:\n' + hex;
+    } catch (e) {
+      out.textContent = '错误: ' + e.message;
+    }
+  });
+</script>
