@@ -1,0 +1,16 @@
+{
+  "updated_at": "2026-08-10",
+  "devices": [
+    {
+      "id": "esp32-devkit",
+      "name": "ESP32 开发板",
+      "latest_version": "1.2.0",
+      "release_date": "2026-08-01",
+      "changelog": "修复蓝牙断连问题；新增低功耗模式。",
+      "download_url": "https://github.com/USER/REPO/releases/download/v1.2.0/firmware-esp32-1.2.0.bin",
+      "size": 1048576,
+      "sha256": "REPLACE_WITH_REAL_SHA256",
+      "min_app_version": "1.0.0"
+    }
+  ]
+}
