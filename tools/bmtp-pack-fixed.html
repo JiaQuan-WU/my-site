@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>BMTP 协议数据模拟组包工具 (修复版)</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/blueimp-md5/2.19.0/js/md5.min.js"></script>
+    <style>
+        body { font-family: "Microsoft YaHei", sans-serif; padding: 20px; background: #f4f6f9; }
+        .container { max-width: 1200px; margin: 0 auto; background: #fff; padding: 25px; border-radius: 10px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+        h1 { color: #1a5fb4; text-align: center; border-bottom: 2px solid #eee; padding-bottom: 15px; }
+        .input-group { margin: 15px 0; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+        label { min-width: 100px; font-weight: bold; color: #333; }
+        select, button, input[type="file"] { padding: 10px 15px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; }
+        button { background: #1a5fb4; color: #fff; cursor: pointer; border: none; font-weight: bold; transition: background 0.3s; }
+        button:hover { background: #0d47a1; }
+        button:disabled { background: #999; cursor: not-allowed; }
+        #fileInfo { margin: 15px 0; padding: 10px; background: #e8f5e9; border-radius: 4px; font-size: 14px; display: none; }
+        #log { width: 100%; height: 600px; font-family: 'Consolas', monospace; font-size: 13px; line-height: 1.5; padding: 15px; border: 1px solid #ddd; border-radius: 4px; overflow-y: auto; background: #f8f9fa; white-space: pre; }
+        .status { color: #d32f2f; font-weight: bold; margin: 5px 0; display: block; }
+        .success { color: #2e7d32; }
+        .step { color: #1a5fb4; font-weight: bold; margin: 10px 0; display: block; }
+        .hex { font-family: 'Courier New', monospace; color: #555; display: block; margin-left: 20px; }
+        .download-btn { background: #28a745; margin-top: 20px; }
+        .download-btn:hover { background: #218838; }
+        .action-btns { display: flex; gap: 10px; flex-wrap: wrap; margin: 15px 0; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>BMTP 蓝牙音频传输协议模拟组包工具 (修复版)</h1>
+        <p style="text-align: center; color: #666; margin-bottom: 20px;">基于 YSAiR B5 项目协议 v1.0 | 深圳</p>
+
+        <div class="input-group">
+            <label>1. 选择信道:</label>
+            <select id="channelSelect"></select>
+        </div>
+
+        <div class="input-group">
+            <label>2. 选择文件:</label>
+            <input type="file" id="fileInput" accept=".bin,.mp3,.dat">
+            <button onclick="processFile()">3. 解析文件</button>
+        </div>
+
+        <div id="fileInfo"></div>
+
+        <div class="input-group">
+            <label>4. 模拟场景:</label>
+            <div class="action-btns">
+                <button onclick="generateWriteFlow()">📝 生成写入全流程</button>
+                <button onclick="generateReadFlow()" style="background:#ffc107;color:#000;">⮁ 生成读取指令流 (全文件)</button>
+                <button onclick="generateEraseFlow()">🗑️ 生成清空指令 (删除音频)</button>
+                <button onclick="generateErrorPackets()">⚠️ 生成异常恢复指令</button>
+            </div>
+            <button id="downloadBtn" class="download-btn" onclick="downloadTxt()">💾 保存数据包到TXT</button>
+        </div>
+
+        <textarea id="log" placeholder="操作日志与生成的HEX数据包将显示在这里..."></textarea>
+    </div>
+
+    <script>
+        // 1. 初始化信道选择器 (0x00 - 0x15)
+        window.onload = function() {
+            const sel = document.getElementById('channelSelect');
+            for (let i = 0; i <= 21; i++) {
+                const opt = document.createElement('option');
+                opt.value = i;
+                opt.textContent = `0x${i.toString(16).padStart(2, '0').toUpperCase()} (APP_${i})`;
+                sel.appendChild(opt);
+            }
+        };
+
+        let globalFileData = null;
+        let globalChannel = 0;
+
+        // 2. 处理文件上传
+        function processFile() {
+            const fileInput = document.getElementById('fileInput');
+            const log = document.getElementById('log');
+            const fileInfo = document.getElementById('fileInfo');
+            
+            if (fileInput.files.length === 0) {
+                alert('请先选择一个文件！');
+                return;
+            }
+
+            const file = fileInput.files[0];
+            const reader = new FileReader();
+            
+            reader.onload = function(e) {
+                const arrayBuffer = e.target.result;
+                const uint8Array = new Uint8Array(arrayBuffer);
+                
+                // 计算 MD5
+                const md5Str = md5(uint8Array);
+                const md5Bytes = hexStringToBytes(md5Str);
+                
+                globalFileData = uint8Array;
+                globalChannel = parseInt(document.getElementById('channelSelect').value);
+                
+                // 显示文件信息
+                fileInfo.innerHTML = `文件: ${file.name} | 大小: ${uint8Array.length} 字节 | MD5: ${md5Str}`;
+                fileInfo.style.display = 'block';
+                
+                logMessage(`文件加载成功。通道 [${globalChannel}] 准备就绪。`, 'success');
+            };
+            reader.readAsArrayBuffer(file);
+        }
+
+        // 辅助函数：Hex字符串转字节数组
+        function hexStringToBytes(hex) {
+            const bytes = [];
+            for (let i = 0; i < hex.length; i += 2) {
+                bytes.push(parseInt(hex.substr(i, 2), 16));
+            }
+            return new Uint8Array(bytes);
+        }
+
+        // 辅助函数：字节数组转 Hex字符串
+        function bytesToHex(bytes) {
+            return Array.from(bytes).map(b => b.toString(16).padStart(2, '0').toUpperCase()).join(' ');
+        }
+
+        // 3. CRC-16/IBM 计算 (多项式 0x8005, 初始值 0x0000, 大端序)
+        function crc16(data) {
+            let crc = 0x0000;
+            const poly = 0x8005;
+            for (let byte of data) {
+                crc ^= byte << 8;
+                for (let i = 0; i < 8; i++) {
+                    if (crc & 0x8000) {
+                        crc = (crc << 1) ^ poly;
+                    } else {
+                        crc <<= 1;
+                    }
+                    crc &= 0xFFFF;
+                }
+            }
+            return crc;
+        }
+
+        // 4. 构建 BMTP 帧 (核心函数)
+        // cmd: 操作码, payload: 负载数据(Uint8Array), pktIndex: 包索引, totalPackets: 总包数
+        function buildFrame(cmd, payload, pktIndex = 0, totalPackets = 1) {
+            const HEAD = new Uint8Array([0x42, 0x4D, 0x54, 0x50]); // 'BMTP'
+            const VERSION = 0x01;
+            
+            // 1. 构建 Header (11字节)
+            const header = new Uint8Array(11);
+            const dv = new DataView(header.buffer);
+            header.set(HEAD);
+            header[4] = VERSION;
+            dv.setUint16(5, pktIndex, false);   // BE
+            dv.setUint16(7, totalPackets, false); // BE
+            header[9] = cmd;
+            header[10] = payload.length;
+
+            // 2. 计算 CRC (范围: Head ~ Payload)
+            const crcInput = new Uint8Array(header.length + payload.length);
+            crcInput.set(header);
+            crcInput.set(payload, header.length);
+            const crc = crc16(crcInput);
+
+            // 3. 组装最终帧
+            const frame = new Uint8Array(crcInput.length + 2);
+            frame.set(crcInput);
+            frame[crcInput.length] = (crc >> 8) & 0xFF; // CRC High
+            frame[crcInput.length + 1] = crc & 0xFF;    // CRC Low
+
+            return frame;
+        }
+
+        // 5. 生成写入全流程 (修复版)
+        function generateWriteFlow() {
+            if (!globalFileData) { alert('请先解析文件！'); return; }
+            const log = document.getElementById('log');
+            const channel = parseInt(document.getElementById('channelSelect').value);
+            const fileData = globalFileData;
+            const MAX_PAYLOAD = 114;
+            const totalPackets = Math.ceil(fileData.length / MAX_PAYLOAD);
+
+            logMessage('--- 开始生成 [写入音频文件] 全流程指令 ---', 'step');
+
+            // 1. 下发哈希 (CMD 0x01)
+            // 模拟：生成一个基于文件内容的MD5，实际测试可替换为固定值
+            const fileMd5Str = md5(fileData);
+            const fileMd5Bytes = hexStringToBytes(fileMd5Str);
+            
+            const payloadHash = new Uint8Array(1 + 16);
+            payloadHash[0] = channel;
+            payloadHash.set(fileMd5Bytes, 1);
+            
+            const frameHash = buildFrame(0x01, payloadHash);
+            logMessage(`App → 主机: 下发哈希值 (CMD 0x01)`, 'info');
+            logMessage(bytesToHex(frameHash), 'hex');
+
+            // 2. 主机响应 (无哈希，准备接收数据) (CMD 0x00)
+            const frameStatus = buildFrame(0x00, new Uint8Array([channel, 0x02]));
+            logMessage(`主机 → App: 状态响应 (CMD 0x00) [0x02 无哈希]`, 'info');
+            logMessage(bytesToHex(frameStatus), 'hex');
+
+            // 3. 分包写入 (CMD 0x02)
+            for (let i = 0; i < totalPackets; i++) {
+                const start = i * MAX_PAYLOAD;
+                const end = Math.min(start + MAX_PAYLOAD, fileData.length);
+                const chunk = fileData.slice(start, end);
+                
+                const payloadData = new Uint8Array(1 + chunk.length);
+                payloadData[0] = channel;
+                payloadData.set(chunk, 1);
+                
+                const frameWrite = buildFrame(0x02, payloadData, i, totalPackets);
+                logMessage(`App → 主机: 写入数据包 ${i+1}/${totalPackets} (CMD 0x02)`, 'info');
+                logMessage(bytesToHex(frameWrite), 'hex');
+
+                // 4. 主机 ACK (CMD 0x00)
+                const frameAck = buildFrame(0x00, new Uint8Array([channel, 0x00]));
+                logMessage(`主机 → App: 写入确认 (CMD 0x00) [0x00 成功]`, 'info');
+                logMessage(bytesToHex(frameAck), 'hex');
+            }
+            logMessage('--- [写入音频文件] 流程生成完毕 ---', 'success');
+        }
+
+        // 6. 生成读取指令流 (优化版：模拟主机发送整个文件)
+        function generateReadFlow() {
+            if (!globalFileData) { alert('请先解析文件！'); return; }
+            const log = document.getElementById('log');
+            const channel = parseInt(document.getElementById('channelSelect').value);
+            const fileData = globalFileData;
+            const MAX_PAYLOAD = 114; // 每包有效音频数据
+            const totalPackets = Math.ceil(fileData.length / MAX_PAYLOAD);
+
+            logMessage('--- 开始模拟 [主机读取并发送文件] 流程 ---', 'step');
+
+            // 模拟 1: App 发送读取请求 (CMD 0x03)
+            // 注意：实际协议中 App 会指定索引，这里模拟 App 请求从索引 0 开始读
+            const reqPayload = new Uint8Array(3);
+            reqPayload[0] = channel;
+            // 假设请求从第 0 包开始
+            const reqDv = new DataView(reqPayload.buffer);
+            reqDv.setUint16(1, 0, false); 
+            
+            const reqFrame = buildFrame(0x03, reqPayload);
+            logMessage(`App → 主机: 发送读取请求 (CMD 0x03) [请求索引: 0]`, 'info');
+            logMessage(bytesToHex(reqFrame), 'hex');
+
+            // 模拟 2: 主机循环发送所有数据包 (CMD 0x04)
+            logMessage(`--- 主机开始分包发送数据 (共 ${totalPackets} 包) ---`, 'step');
+
+            for (let i = 0; i < totalPackets; i++) {
+                const start = i * MAX_PAYLOAD;
+                const end = Math.min(start + MAX_PAYLOAD, fileData.length);
+                const chunk = fileData.slice(start, end);
+
+                // 构建 Payload: 信道号 + 数据
+                const payloadData = new Uint8Array(1 + chunk.length);
+                payloadData[0] = channel;
+                payloadData.set(chunk, 1);
+
+                // 关键：构建帧时传入当前的包索引 (i) 和总包数
+                const frame = buildFrame(0x04, payloadData, i, totalPackets);
+                
+                logMessage(`主机 → App: 发送数据包 [${i+1}/${totalPackets}] (CMD 0x04, Index: ${i})`, 'info');
+                logMessage(bytesToHex(frame), 'hex');
+            }
+            logMessage('--- [主机发送文件] 流程模拟完毕 ---\n', 'success');
+        }
+
+        // 7. 生成清空指令 (删除音频文件) - 新增
+        function generateEraseFlow() {
+            const log = document.getElementById('log');
+            const channel = parseInt(document.getElementById('channelSelect').value);
+            
+            logMessage('--- 开始生成 [清空指令] (删除音频文件) ---', 'step');
+            
+            // 1. App 发送删除指令 (CMD 0x05)
+            // Payload: 仅包含信道号 (1字节)
+            const payload = new Uint8Array([channel]);
+            const frameDelete = buildFrame(0x05, payload);
+            
+            logMessage(`App → 主机: 发送清空指令 (CMD 0x05) [信道: ${channel}]`, 'info');
+            logMessage(bytesToHex(frameDelete), 'hex');
+            
+            // 2. 主机响应 (删除成功)
+            const frameAck = buildFrame(0x00, new Uint8Array([channel, 0x00]));
+            logMessage(`主机 → App: 删除操作确认 (CMD 0x00) [0x00 成功]`, 'info');
+            logMessage(bytesToHex(frameAck), 'hex');
+            
+            logMessage('--- [清空指令] 生成完毕 ---\n', 'success');
+        }
+
+        // 8. 生成异常恢复指令
+        function generateErrorPackets() {
+            const log = document.getElementById('log');
+            const channel = parseInt(document.getElementById('channelSelect').value);
+
+            logMessage('--- 开始生成 [异常恢复/错误码] 指令 ---', 'step');
+
+            const errorCases = [
+                { code: 0x01, desc: "通用失败" },
+                { code: 0x04, desc: "存储空间不足" },
+                { code: 0x05, desc: "哈希校验失败" },
+                { code: 0x06, desc: "CRC 校验错误" },
+                { code: 0x07, desc: "协议版本不支持" }
+            ];
+
+            errorCases.forEach(err => {
+                const frame = buildFrame(0x00, new Uint8Array([channel, err.code]));
+                logMessage(`主机 → App: ${err.desc} (CMD 0x00, Code 0x${err.code.toString(16)})`, 'info');
+                logMessage(bytesToHex(frame), 'hex');
+            });
+
+            logMessage('--- [异常恢复] 指令生成完毕 ---\n', 'success');
+        }
+
+        // 9. 日志输出与下载
+        function logMessage(msg, type) {
+            const log = document.getElementById('log');
+            let prefix = '';
+            if (type === 'error') prefix = '[ERROR] ';
+            if (type === 'success') prefix = '[SUCCESS] ';
+            if (type === 'step') prefix = '\n[流程] ';
+            if (type === 'info') prefix = '[交互] ';
+            if (type === 'hex') prefix = '       ';
+            log.value += prefix + msg + '\n';
+            log.scrollTop = log.scrollHeight;
+            
+            // 显示下载按钮
+            document.getElementById('downloadBtn').style.display = 'inline-block';
+        }
+
+        function downloadTxt() {
+            const log = document.getElementById('log');
+            const blob = new Blob([log.value], {type: "text/plain;charset=utf-8"});
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = `BMTP_Simulation_${new Date().getTime()}.txt`;
+            a.click();
+        }
+    </script>
+</body>
+</html>

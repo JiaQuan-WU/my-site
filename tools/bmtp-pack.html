@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BMTP 二进制组包工具 (v1.0)</title>
+    <style>
+        body { font-family: "Microsoft YaHei", sans-serif; max-width: 900px; margin: 20px auto; padding: 20px; background: #f0f2f5; }
+        .container { background: white; padding: 25px; border-radius: 10px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+        h1 { color: #1a5fb4; text-align: center; border-bottom: 2px solid #e0e6f0; padding-bottom: 10px; }
+        .spec { background: #eef3fa; padding: 15px; border-radius: 6px; font-size: 0.95em; line-height: 1.6; margin: 15px 0; }
+        .form-row { display: flex; gap: 15px; margin-bottom: 15px; align-items: center; }
+        label { font-weight: bold; color: #333; min-width: 100px; }
+        input, select, button { padding: 10px; border: 1px solid #ccc; border-radius: 4px; font-size: 1em; }
+        input[type="file"] { flex: 1; }
+        button { background: #1a5fb4; color: white; border: none; cursor: pointer; padding: 12px 20px; font-weight: bold; }
+        button:hover { background: #154a8a; }
+        button:disabled { background: #999; cursor: not-allowed; }
+        textarea { width: 100%; min-height: 300px; font-family: "Courier New", monospace; padding: 15px; border: 1px solid #ddd; background: #f8f9fa; resize: vertical; }
+        .footer { text-align: center; margin-top: 30px; color: #888; font-size: 0.9em; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>BMTP 蓝牙音频文件组包工具</h1>
+        <p style="text-align:center; color:#666;">基于 YSAiR B5 项目协议 v1.0 (2026-06)</p>
+
+        <div class="spec">
+            <strong>📊 协议关键参数：</strong><br>
+            📡 帧头: <code>42 4D 54 50</code> (BMTP) | 
+            📏 最大帧长: <code>128 Bytes</code> | 
+            📦 Payload(Max): <code>114 Bytes</code> (音频数据) | 
+            🔢 字节序: <code>大端 (BE)</code>
+        </div>
+
+        <div class="form-row">
+            <label for="audioFile">📂 选择音频文件:</label>
+            <input type="file" id="audioBuffer" accept=".mp3,.bin" required>
+        </div>
+
+        <div class="form-row">
+            <label for="channelSelect">📡 选择信道 (0-21):</label>
+            <select id="channelSelect">
+                <!-- 生成 0 到 21 的选项 -->
+            </select>
+            <label for="pktIndex">🔢 起始索引:</label>
+            <input type="number" id="pktIndex" value="0" min="0">
+        </div>
+
+        <button id="packBtn">📦 开始组包 (生成 TXT)</button>
+
+        <div style="margin-top: 20px;">
+            <textarea id="outputArea" placeholder="等待输入..."></textarea>
+        </div>
+
+        <button id="downloadBtn" style="display:none; margin-top:10px; background:#28a745;">⬇️ 下载 BMTP 数据包文件</button>
+    </div>
+
+    <div class="footer">
+        &copy; 2026 YSAiR 嵌入式开发部 | BMTP 协议工具
+    </div>
+
+    <script>
+        // 1. 初始化信道下拉框 (0 ~ 21)
+        const channelSelect = document.getElementById('channelSelect');
+        for (let i = 0; i <= 21; i++) {
+            const hexVal = i < 16 ? `0x0${i.toString(16).toUpperCase()}` : `0x${i.toString(16).toUpperCase()}`;
+            const option = document.createElement('option');
+            option.value = i;
+            option.textContent = `${hexVal} (APP_${i})`;
+            channelSelect.appendChild(option);
+        }
+
+        // 2. BMTP 组包核心逻辑
+        document.getElementById('packBtn').addEventListener('click', async () => {
+            const fileInput = document.getElementById('audioBuffer');
+            const outputArea = document.getElementById('outputArea');
+            const downloadBtn = document.getElementById('downloadBtn');
+            const channelVal = parseInt(document.getElementById('channelSelect').value);
+            const startIndex = parseInt(document.getElementById('pktIndex').value);
+
+            if (!fileInput.files[0]) {
+                alert("请先选择一个音频文件 (.mp3/.bin)");
+                return;
+            }
+
+            outputArea.value = "[*] 正在读取文件并解析...";
+            
+            try {
+                const file = fileInput.files[0];
+                const arrayBuffer = await file.arrayBuffer();
+                const rawData = new Uint8Array(arrayBuffer);
+                
+                // --- BMTP 配置 ---
+                const MAX_PAYLOAD = 114; // 协议规定的最大音频数据负载
+                const TOTAL_PACKETS = Math.ceil(rawData.length / MAX_PAYLOAD);
+                
+                outputArea.value += `\n[*] 文件大小: ${rawData.length} 字节`;
+                outputArea.value += `\n[*] 分包总数: ${TOTAL_PACKETS} 个包`;
+                outputArea.value += "\n" + "=".repeat(50) + "\n";
+
+                let allFramesHex = ""; // 用于存储所有帧的十六进制文本
+
+                // --- 循环生成每一帧 ---
+                for (let i = 0; i < TOTAL_PACKETS; i++) {
+                    const start = i * MAX_PAYLOAD;
+                    const end = Math.min(start + MAX_PAYLOAD, rawData.length);
+                    const currentPayloadData = rawData.slice(start, end);
+                    
+                    // 1. 构建 Payload: [信道号(1B)] + [音频数据(NB)]
+                    const payload = new Uint8Array(1 + currentPayloadData.length);
+                    payload[0] = channelVal; // 第一个字节是信道号
+                    payload.set(currentPayloadData, 1);
+
+                    // 2. 构建固定头 (不包含 CRC)
+                    // Head(4) + Ver(1) + Idx(2) + Total(2) + CMD(1) + Len(1)
+                    const header = new Uint8Array(11);
+                    const headerView = new DataView(header.buffer);
+                    
+                    // 2.1 帧头 "BMTP" (0x42, 0x4D, 0x54, 0x50)
+                    header[0] = 0x42; header[1] = 0x4D; header[2] = 0x54; header[3] = 0x50;
+                    
+                    // 2.2 版本号
+                    header[4] = 0x01; // v1.0
+                    
+                    // 2.3 包索引 (2B, BE)
+                    headerView.setUint16(5, startIndex + i, false); // false = Big Endian
+                    
+                    // 2.4 总包数 (2B, BE)
+                    headerView.setUint16(7, TOTAL_PACKETS, false);
+                    
+                    // 2.5 操作码: 0x02 (写音频数据)
+                    header[9] = 0x02;
+                    
+                    // 2.6 Payload 长度
+                    header[10] = payload.length;
+
+                    // 3. 计算 CRC16/IBM (校验范围: Head ~ Payload)
+                    const crcBuffer = new Uint8Array(header.length + payload.length);
+                    crcBuffer.set(header);
+                    crcBuffer.set(payload, header.length);
+                    const crc = crc16_IBM(crcBuffer);
+
+                    // 4. 组装最终帧 (添加 CRC 尾)
+                    const finalFrame = new Uint8Array(crcBuffer.length + 2);
+                    finalFrame.set(crcBuffer);
+                    // 写入 CRC (大端序: 高位在前)
+                    finalFrame[crcBuffer.length] = (crc >> 8) & 0xFF;
+                    finalFrame[crcBuffer.length + 1] = crc & 0xFF;
+
+                    // 5. 格式化输出 (Hex + 人类可读)
+                    const hexStr = Array.from(finalFrame).map(b => b.toString(16).padStart(2, '0').toUpperCase()).join(' ');
+                    
+                    outputArea.value += `[包 #${i+1}/${TOTAL_PACKETS}] 索引=${startIndex+i}, 长度=${finalFrame.length}字节\n`;
+                    outputArea.value += hexStr + "\n\n";
+
+                    // 添加到下载文件内容
+                    allFramesHex += `// Packet Index: ${startIndex+i}, Channel: 0x${channelVal.toString(16).toUpperCase()}\n${hexStr}\n`;
+                }
+
+                // 显示完成
+                outputArea.value += "[+] 组包完成！";
+                
+                // 启用下载按钮
+                downloadBtn.style.display = 'inline-block';
+                downloadBtn.onclick = () => {
+                    const blob = new Blob([allFramesHex], { type: 'text/plain' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `BMTP_${file.name.replace('.mp3','').replace('.bin','')}_CH${channelVal}.txt`;
+                    a.click();
+                };
+
+            } catch (e) {
+                outputArea.value = "[!] 错误: " + e.message;
+                console.error(e);
+            }
+        });
+
+        // 3. CRC-16/IBM 算法实现 (多项式 0x8005, 初始值 0x0000)
+        // 参考文档: 多项式 x^16 + x^15 + x^2 + 1 (0x8005)
+        function crc16_IBM(data) {
+            let crc = 0x0000; // 初始值
+            const poly = 0x8005;
+
+            for (let i = 0; i < data.length; i++) {
+                crc ^= data[i] << 8;
+                for (let j = 0; j < 8; j++) {
+                    if (crc & 0x8000) {
+                        crc = (crc << 1) ^ poly;
+                    } else {
+                        crc <<= 1;
+                    }
+                    crc &= 0xFFFF; // 保持 16 位
+                }
+            }
+            return crc;
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ASCII & Hex 转换工具</title>
+    <style>
+        :root {
+            --bg-color: #f4f6f9;
+            --card-bg: #ffffff;
+            --primary: #4a6fa5;
+            --primary-hover: #3b5998;
+            --text-main: #333333;
+            --text-sub: #666666;
+            --border: #e0e0e0;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            background: var(--card-bg);
+            padding: 2rem;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+            width: 100%;
+            max-width: 800px;
+        }
+
+        h1 {
+            text-align: center;
+            margin-bottom: 1.5rem;
+            color: var(--primary);
+            font-size: 1.8rem;
+        }
+
+        .tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 1.5rem;
+            justify-content: center;
+        }
+
+        .tab-btn {
+            padding: 10px 24px;
+            border: 2px solid var(--primary);
+            background: transparent;
+            color: var(--primary);
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.2s ease;
+        }
+
+        .tab-btn.active, .tab-btn:hover {
+            background: var(--primary);
+            color: white;
+        }
+
+        .converter-panel { display: none; }
+        .converter-panel.active { display: block; }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: var(--text-sub);
+            font-size: 0.9rem;
+        }
+
+        textarea {
+            width: 100%;
+            height: 140px;
+            padding: 12px;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 14px;
+            resize: vertical;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+
+        textarea:focus { border-color: var(--primary); }
+
+        .action-row {
+            display: flex;
+            justify-content: center;
+            gap: 12px;
+            margin: 1.2rem 0;
+        }
+
+        button.convert-btn {
+            padding: 10px 30px;
+            background: var(--primary);
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 1rem;
+            font-weight: 600;
+            transition: background 0.2s;
+        }
+
+        button.convert-btn:hover { background: var(--primary-hover); }
+
+        .error-msg {
+            color: #d9534f;
+            font-size: 0.85rem;
+            margin-top: 8px;
+            min-height: 1.2em;
+        }
+
+        .hint {
+            font-size: 0.8rem;
+            color: #999;
+            margin-top: 6px;
+        }
+
+        @media (max-width: 500px) {
+            .container { padding: 1.2rem; }
+            h1 { font-size: 1.4rem; }
+            .tab-btn { padding: 8px 16px; font-size: 0.9rem; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>🔧 ASCII ⇄ Hex 转换器</h1>
+
+    <div class="tabs">
+        <button class="tab-btn active" onclick="switchTab('ascii2hex')">ASCII → Hex</button>
+        <button class="tab-btn" onclick="switchTab('hex2ascii')">Hex → ASCII</button>
+    </div>
+
+    <!-- ASCII to Hex Panel -->
+    <div id="ascii2hex" class="converter-panel active">
+        <label for="asciiInput">输入 ASCII / 文本内容</label>
+        <textarea id="asciiInput" placeholder="例如：Hello World!"></textarea>
+        <div class="action-row">
+            <button class="convert-btn" onclick="convertAsciiToHex()">转换 ➜</button>
+        </div>
+        <label for="hexOutput">输出 Hex（十六进制）</label>
+        <textarea id="hexOutput" readonly placeholder="转换结果将显示在这里..."></textarea>
+        <p class="hint">💡 每个字符转为两位十六进制数，以空格分隔</p>
+    </div>
+
+    <!-- Hex to ASCII Panel -->
+    <div id="hex2ascii" class="converter-panel">
+        <label for="hexInput">输入 Hex（十六进制）</label>
+        <textarea id="hexInput" placeholder="例如：48 65 6C 6C 6F 20 57 6F 72 6C 64 21&#10;也支持：48656C6C6F 或 0x48 0x65 ..."></textarea>
+        <div class="action-row">
+            <button class="convert-btn" onclick="convertHexToAscii()">转换 ➜</button>
+        </div>
+        <label for="asciiOutput">输出 ASCII / 文本内容</label>
+        <textarea id="asciiOutput" readonly placeholder="转换结果将显示在这里..."></textarea>
+        <div id="hexError" class="error-msg"></div>
+        <p class="hint">💡 支持空格、逗号、0x前缀等多种分隔格式</p>
+    </div>
+</div>
+
+<script>
+    // Tab switching
+    function switchTab(tabId) {
+        document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+        document.querySelectorAll('.converter-panel').forEach(panel => panel.classList.remove('active'));
+        
+        event.target.classList.add('active');
+        document.getElementById(tabId).classList.add('active');
+    }
+
+    // ASCII to Hex
+    function convertAsciiToHex() {
+        const input = document.getElementById('asciiInput').value;
+        const output = document.getElementById('hexOutput');
+        
+        if (!input) {
+            output.value = '';
+            return;
+        }
+
+        const hexArray = [];
+        for (let i = 0; i < input.length; i++) {
+            const code = input.charCodeAt(i);
+            // 处理非ASCII字符（超过255），用Unicode转义提示
+            if (code > 255) {
+                hexArray.push('[U+' + code.toString(16).toUpperCase().padStart(4, '0') + ']');
+            } else {
+                hexArray.push(code.toString(16).toUpperCase().padStart(2, '0'));
+            }
+        }
+        output.value = hexArray.join(' ');
+    }
+
+    // Hex to ASCII
+    function convertHexToAscii() {
+        const input = document.getElementById('hexInput').value.trim();
+        const output = document.getElementById('asciiOutput');
+        const errorMsg = document.getElementById('hexError');
+        errorMsg.textContent = '';
+        
+        if (!input) {
+            output.value = '';
+            return;
+        }
+
+        try {
+            // 清理输入：去除 0x/0X 前缀，统一用空格分割
+            const cleaned = input
+                .replace(/0x/gi, '')
+                .replace(/[,;\n\r\t]+/g, ' ')
+                .trim();
+            
+            const hexParts = cleaned.split(/\s+/).filter(s => s.length > 0);
+            let result = '';
+
+            for (const part of hexParts) {
+                // 验证是否为合法十六进制
+                if (!/^[0-9A-Fa-f]+$/.test(part)) {
+                    throw new Error(`无效的十六进制值: "${part}"`);
+                }
+                // 每两个字符为一组
+                if (part.length % 2 !== 0) {
+                    throw new Error(`十六进制长度必须为偶数: "${part}"`);
+                }
+                for (let i = 0; i < part.length; i += 2) {
+                    const byte = parseInt(part.substring(i, i + 2), 16);
+                    result += String.fromCharCode(byte);
+                }
+            }
+
+            output.value = result;
+        } catch (e) {
+            output.value = '';
+            errorMsg.textContent = '⚠️ ' + e.message;
+        }
+    }
+
+    // 快捷键：Ctrl+Enter 触发转换
+    document.addEventListener('keydown', function(e) {
+        if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+            const activePanel = document.querySelector('.converter-panel.active');
+            if (activePanel.id === 'ascii2hex') convertAsciiToHex();
+            else convertHexToAscii();
+        }
+    });
+</script>
+
+</body>
+</html>

@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>图片转 RGB565 BIN 工具</title>
+    <style>
+        :root {
+            --primary-color: #2563eb;
+            --bg-color: #f3f4f6;
+            --card-bg: #ffffff;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background-color: var(--bg-color);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            color: #333;
+        }
+        .container {
+            background-color: var(--card-bg);
+            padding: 2rem;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            width: 90%;
+            max-width: 500px;
+            text-align: center;
+        }
+        h2 { margin-top: 0; color: #1f2937; }
+        .upload-area {
+            border: 2px dashed #cbd5e1;
+            border-radius: 8px;
+            padding: 2rem;
+            margin: 1.5rem 0;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        .upload-area:hover { border-color: var(--primary-color); background-color: #eff6ff; }
+        input[type="file"] { display: none; }
+        .btn {
+            background-color: var(--primary-color);
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 6px;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: background 0.2s;
+            width: 100%;
+        }
+        .btn:disabled { background-color: #9ca3af; cursor: not-allowed; }
+        .btn:hover:not(:disabled) { background-color: #1d4ed8; }
+        .info-box {
+            margin-top: 1.5rem;
+            padding: 1rem;
+            background-color: #f8fafc;
+            border-radius: 6px;
+            text-align: left;
+            font-size: 0.9rem;
+            display: none;
+        }
+        .preview-img {
+            max-width: 100%;
+            max-height: 200px;
+            margin-top: 10px;
+            border-radius: 4px;
+            display: none;
+        }
+        .status { margin-top: 10px; font-size: 0.9rem; color: #666; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>图片转 RGB565 (.bin)</h2>
+    <p style="font-size: 0.9rem; color: #666;">专为嵌入式 TFT 屏幕设计 (R5G6B5)</p>
+
+    <!-- 上传区域 -->
+    <div class="upload-area" onclick="document.getElementById('fileInput').click()">
+        <span id="uploadText">点击选择图片或拖拽至此</span>
+        <input type="file" id="fileInput" accept="image/*">
+        <img id="preview" class="preview-img" alt="预览">
+    </div>
+
+    <!-- 状态信息 -->
+    <div id="status" class="status"></div>
+
+    <!-- 详细信息 -->
+    <div id="infoBox" class="info-box">
+        <div><strong>分辨率:</strong> <span id="resInfo">-</span></div>
+        <div><strong>文件大小:</strong> <span id="sizeInfo">-</span> (预计)</div>
+        <div><strong>格式:</strong> RGB565 (Big Endian)</div>
+    </div>
+
+    <br>
+    <button id="downloadBtn" class="btn" disabled>下载 .bin 文件</button>
+</div>
+
+<script>
+    const fileInput = document.getElementById('fileInput');
+    const preview = document.getElementById('preview');
+    const uploadText = document.getElementById('uploadText');
+    const downloadBtn = document.getElementById('downloadBtn');
+    const infoBox = document.getElementById('infoBox');
+    const statusDiv = document.getElementById('status');
+
+    let currentArrayBuffer = null;
+    let fileName = 'image';
+
+    // 监听文件选择
+    fileInput.addEventListener('change', function(e) {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        fileName = file.name.split('.')[0];
+        uploadText.innerText = file.name;
+        statusDiv.innerText = "正在处理...";
+
+        const reader = new FileReader();
+        reader.onload = function(event) {
+            const img = new Image();
+            img.onload = function() {
+                processImage(img);
+            };
+            img.src = event.target.result;
+        };
+        reader.readAsDataURL(file);
+    });
+
+    // 核心处理函数：Canvas 绘图 + 像素提取
+    function processImage(img) {
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+
+        // 设置画布大小为图片原始大小
+        canvas.width = img.width;
+        canvas.height = img.height;
+
+        // 绘制图片到 Canvas
+        ctx.drawImage(img, 0, 0);
+
+        // 获取像素数据 (RGBA)
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const data = imageData.data;
+
+        // 创建 ArrayBuffer 存储 RGB565 数据
+        // 每个像素占 2 字节 (16 bit)
+        const buffer = new ArrayBuffer(canvas.width * canvas.height * 2);
+        const view = new DataView(buffer);
+
+        let index = 0;
+        for (let i = 0; i < data.length; i += 4) {
+            const r = data[i];     // Red (0-255)
+            const g = data[i + 1]; // Green (0-255)
+            const b = data[i + 2]; // Blue (0-255)
+            // data[i+3] 是 Alpha，这里忽略，假设为不透明
+
+            // --- RGB888 转 RGB565 算法 ---
+            // R: 取高5位 (右移3位)
+            // G: 取高6位 (右移2位)
+            // B: 取高5位 (右移3位)
+
+            const r5 = (r >> 3) & 0x1F;
+            const g6 = (g >> 2) & 0x3F;
+            const b5 = (b >> 3) & 0x1F;
+
+            // 组合成 16位整数
+            // 格式: RRRRRGGG GGGBBBBB
+            const rgb565 = (r5 << 11) | (g6 << 5) | b5;
+
+            // 写入 Buffer (大端模式 Big-Endian，大多数 MCU 屏幕默认)
+            // 如果你的屏幕颜色反了，可能需要改为 setUint16(index, rgb565, true) 小端模式
+            view.setUint16(index, rgb565, false);
+
+            index += 2;
+        }
+
+        // 更新 UI
+        currentArrayBuffer = buffer;
+        preview.src = img.src;
+        preview.style.display = 'block';
+        infoBox.style.display = 'block';
+
+        document.getElementById('resInfo').innerText = `${canvas.width} x ${canvas.height}`;
+        document.getElementById('sizeInfo').innerText = formatBytes(buffer.byteLength);
+
+        downloadBtn.disabled = false;
+        statusDiv.innerText = "转换完成！点击下方按钮下载。";
+    }
+
+    // 下载功能
+    downloadBtn.addEventListener('click', function() {
+        if (!currentArrayBuffer) return;
+
+        const blob = new Blob([currentArrayBuffer], {type: "application/octet-stream"});
+        const url = URL.createObjectURL(blob);
+
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${fileName}_rgb565.bin`;
+        document.body.appendChild(a);
+        a.click();
+
+        // 清理
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    });
+
+    function formatBytes(bytes, decimals = 2) {
+        if (bytes === 0) return '0 Bytes';
+        const k = 1024;
+        const dm = decimals < 0 ? 0 : decimals;
+        const sizes = ['Bytes', 'KB', 'MB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
+    }
+</script>
+
+</body>
+</html>

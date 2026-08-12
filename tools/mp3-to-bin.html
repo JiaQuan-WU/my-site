@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MP3 to BIN / C Array Converter</title>
+    <style>
+        :root {
+            --bg: #f0f2f5;
+            --card: #ffffff;
+            --primary: #2563eb;
+            --primary-hover: #1d4ed8;
+            --text: #1f2937;
+            --sub: #6b7280;
+            --border: #e5e7eb;
+            --code-bg: #1e1e1e;
+            --code-text: #d4d4d4;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            padding: 40px 20px;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 900px;
+        }
+
+        h1 {
+            text-align: center;
+            margin-bottom: 8px;
+            font-size: 1.8rem;
+        }
+
+        .subtitle {
+            text-align: center;
+            color: var(--sub);
+            margin-bottom: 2rem;
+            font-size: 0.95rem;
+        }
+
+        /* Drop Zone */
+        .drop-zone {
+            border: 2px dashed var(--border);
+            border-radius: 12px;
+            padding: 3rem 2rem;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.2s;
+            background: var(--card);
+            margin-bottom: 1.5rem;
+        }
+
+        .drop-zone:hover, .drop-zone.dragover {
+            border-color: var(--primary);
+            background: #eff6ff;
+        }
+
+        .drop-zone .icon { font-size: 3rem; margin-bottom: 1rem; }
+        .drop-zone p { color: var(--sub); }
+        .drop-zone .filename { 
+            margin-top: 1rem; 
+            font-weight: 600; 
+            color: var(--primary); 
+            font-size: 1.1rem;
+        }
+
+        /* Controls */
+        .controls {
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+            align-items: center;
+            margin-bottom: 1.5rem;
+            background: var(--card);
+            padding: 1rem;
+            border-radius: 10px;
+        }
+
+        .control-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        label { font-size: 0.85rem; font-weight: 600; color: var(--sub); white-space: nowrap; }
+
+        select, input[type="number"] {
+            padding: 8px 12px;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            font-size: 0.9rem;
+            outline: none;
+        }
+
+        select:focus, input:focus { border-color: var(--primary); }
+
+        .spacer { flex: 1; }
+
+        button {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 0.9rem;
+            transition: all 0.2s;
+        }
+
+        .btn-primary { background: var(--primary); color: white; }
+        .btn-primary:hover { background: var(--primary-hover); }
+        .btn-outline { background: transparent; border: 1px solid var(--border); color: var(--text); }
+        .btn-outline:hover { background: #f9fafb; }
+
+        /* Output Area */
+        .output-wrapper {
+            position: relative;
+            background: var(--code-bg);
+            border-radius: 10px;
+            overflow: hidden;
+        }
+
+        .output-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 16px;
+            background: #2d2d2d;
+            color: #aaa;
+            font-size: 0.8rem;
+            font-family: monospace;
+        }
+
+        .copy-btn {
+            padding: 4px 12px;
+            font-size: 0.75rem;
+            background: #444;
+            color: #ddd;
+            border-radius: 4px;
+        }
+        .copy-btn:hover { background: #555; }
+
+        pre {
+            margin: 0;
+            padding: 16px;
+            overflow-x: auto;
+            max-height: 400px;
+            font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+            font-size: 13px;
+            line-height: 1.6;
+            color: var(--code-text);
+        }
+
+        .stats {
+            display: flex;
+            gap: 2rem;
+            margin-top: 1rem;
+            font-size: 0.85rem;
+            color: var(--sub);
+        }
+
+        .hidden { display: none !important; }
+
+        @media (max-width: 600px) {
+            .controls { flex-direction: column; align-items: stretch; }
+            .spacer { display: none; }
+            button { width: 100%; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>🎵 MP3 → BIN / C Array</h1>
+    <p class="subtitle">纯前端转换，文件不会上传到任何服务器 · 支持嵌入式开发数组生成</p>
+
+    <!-- Drop Zone -->
+    <div class="drop-zone" id="dropZone">
+        <div class="icon">📁</div>
+        <p><strong>拖拽 MP3 文件到这里</strong> 或点击选择文件</p>
+        <input type="file" id="fileInput" accept=".mp3,audio/mpeg" style="display:none">
+        <div class="filename hidden" id="fileName"></div>
+    </div>
+
+    <!-- Controls -->
+    <div class="controls hidden" id="controlsPanel">
+        <div class="control-group">
+            <label for="varName">变量名:</label>
+            <input type="text" id="varName" value="mp3_data" style="width:140px">
+        </div>
+        <div class="control-group">
+            <label for="bytesPerLine">每行字节:</label>
+            <select id="bytesPerLine">
+                <option value="8">8</option>
+                <option value="12">12</option>
+                <option value="16" selected>16</option>
+                <option value="20">20</option>
+                <option value="32">32</option>
+            </select>
+        </div>
+        <div class="control-group">
+            <label for="dataType">类型:</label>
+            <select id="dataType">
+                <option value="uint8">const uint8_t</option>
+                <option value="uchar">const unsigned char</option>
+                <option value="hex_raw">Raw Hex (无声明)</option>
+            </select>
+        </div>
+        <div class="spacer"></div>
+        <button class="btn-primary" onclick="generateOutput()">⚡ 生成</button>
+        <button class="btn-outline" onclick="downloadBin()">💾 下载 BIN</button>
+    </div>
+
+    <!-- Output -->
+    <div class="output-wrapper hidden" id="outputWrapper">
+        <div class="output-header">
+            <span id="outputTitle">Output</span>
+            <button class="copy-btn" onclick="copyOutput()">📋 复制</button>
+        </div>
+        <pre id="outputCode"></pre>
+    </div>
+
+    <div class="stats hidden" id="statsBar">
+        <span id="statSize"></span>
+        <span id="statLines"></span>
+        <span id="statTime"></span>
+    </div>
+</div>
+
+<script>
+    let currentFile = null;
+    let arrayBuffer = null;
+
+    // --- File Handling ---
+    const dropZone = document.getElementById('dropZone');
+    const fileInput = document.getElementById('fileInput');
+
+    dropZone.addEventListener('click', () => fileInput.click());
+    dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('dragover'); });
+    dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+    dropZone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        dropZone.classList.remove('dragover');
+        if (e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]);
+    });
+    fileInput.addEventListener('change', (e) => {
+        if (e.target.files.length) handleFile(e.target.files[0]);
+    });
+
+    function handleFile(file) {
+        if (!file.name.toLowerCase().endsWith('.mp3') && file.type !== 'audio/mpeg') {
+            alert('请选择 MP3 文件！');
+            return;
+        }
+        currentFile = file;
+        document.getElementById('fileName').textContent = `✅ ${file.name} (${formatBytes(file.size)})`;
+        document.getElementById('fileName').classList.remove('hidden');
+        document.getElementById('controlsPanel').classList.remove('hidden');
+        
+        // Auto-generate variable name from filename
+        const safeName = file.name.replace(/[^a-zA-Z0-9_]/g, '_').replace(/^_+|_+$/g, '');
+        document.getElementById('varName').value = safeName || 'mp3_data';
+
+        // Read buffer
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            arrayBuffer = e.target.result;
+            generateOutput(); // Auto generate on load
+        };
+        reader.readAsArrayBuffer(file);
+    }
+
+    // --- Core Logic ---
+    function generateOutput() {
+        if (!arrayBuffer) return;
+
+        const t0 = performance.now();
+        const bytes = new Uint8Array(arrayBuffer);
+        const varName = document.getElementById('varName').value.trim() || 'data';
+        const bpl = parseInt(document.getElementById('bytesPerLine').value);
+        const dtype = document.getElementById('dataType').value;
+
+        let lines = [];
+        
+        // Header comment
+        lines.push(`// File: ${currentFile.name}`);
+        lines.push(`// Size: ${bytes.length} bytes | Generated: ${new Date().toLocaleString()}`);
+        lines.push('');
+
+        if (dtype === 'hex_raw') {
+            // Raw hex, no declaration
+            for (let i = 0; i < bytes.length; i += bpl) {
+                const chunk = bytes.slice(i, Math.min(i + bpl, bytes.length));
+                const hexStr = Array.from(chunk).map(b => b.toString(16).padStart(2, '0')).join(' ');
+                lines.push(hexStr);
+            }
+        } else {
+            // C/C++ Array
+            const typeStr = dtype === 'uint8' ? 'const uint8_t' : 'const unsigned char';
+            lines.push(`${typeStr} ${varName}[] PROGMEM = {`);
+            
+            for (let i = 0; i < bytes.length; i += bpl) {
+                const chunk = bytes.slice(i, Math.min(i + bpl, bytes.length));
+                const hexItems = Array.from(chunk).map(b => '0x' + b.toString(16).toUpperCase().padStart(2, '0'));
+                const comma = (i + bpl < bytes.length) ? ',' : '';
+                lines.push('    ' + hexItems.join(', ') + comma);
+            }
+            
+            lines.push(`};`);
+            lines.push(`const uint32_t ${varName}_len = ${bytes.length};`);
+        }
+
+        const output = lines.join('\n');
+        const t1 = performance.now();
+
+        // Render
+        document.getElementById('outputCode').textContent = output;
+        document.getElementById('outputTitle').textContent = `${dtype === 'hex_raw' ? 'Raw Hex' : 'C Array'} Preview`;
+        document.getElementById('outputWrapper').classList.remove('hidden');
+        document.getElementById('statsBar').classList.remove('hidden');
+
+        // Stats
+        document.getElementById('statSize').textContent = `📦 大小: ${formatBytes(bytes.length)}`;
+        document.getElementById('statLines').textContent = `📝 行数: ${lines.length}`;
+        document.getElementById('statTime').textContent = `⚡ 耗时: ${(t1 - t0).toFixed(1)}ms`;
+    }
+
+    // --- Actions ---
+    function copyOutput() {
+        const text = document.getElementById('outputCode').textContent;
+        navigator.clipboard.writeText(text).then(() => {
+            const btn = document.querySelector('.copy-btn');
+            btn.textContent = '✅ 已复制!';
+            setTimeout(() => btn.textContent = '📋 复制', 1500);
+        });
+    }
+
+    function downloadBin() {
+        if (!arrayBuffer) return;
+        const blob = new Blob([arrayBuffer], { type: 'application/octet-stream' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = currentFile.name.replace(/\.mp3$/i, '.bin');
+        a.click();
+        URL.revokeObjectURL(url);
+    }
+
+    // --- Utils ---
+    function formatBytes(bytes) {
+        if (bytes === 0) return '0 B';
+        const k = 1024;
+        const sizes = ['B', 'KB', 'MB', 'GB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    }
+</script>
+
+</body>
+</html>
