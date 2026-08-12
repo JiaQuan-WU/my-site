@@ -1,0 +1,132 @@
+<!DOCTYPE html><html lang="zh-CN"> <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="description" content="本地添加与管理网页工具"><title>我的工具 · 管理器</title><style>:root{--bg: #0f1117;--fg: #e8e8ef;--muted: #9aa0b0;--accent: #4c8dff;--card: #181b24;--border: #262a36}@media(prefers-color-scheme:light){:root{--bg: #ffffff;--fg: #1a1a1a;--muted: #666;--card: #f6f7f9;--border: #e5e7eb}}*{box-sizing:border-box}body{margin:0;font-family:-apple-system,Segoe UI,PingFang SC,Microsoft YaHei,sans-serif;background:var(--bg);color:var(--fg);line-height:1.6}.nav{display:flex;justify-content:space-between;align-items:center;padding:16px 24px;border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--bg);z-index:10}.brand{font-weight:700;color:var(--fg);text-decoration:none;font-size:1.1rem}.nav nav a{color:var(--fg);text-decoration:none;margin-left:18px;opacity:.8}.nav nav a:hover{opacity:1}.container{max-width:820px;margin:0 auto;padding:32px 24px 64px}.hero{text-align:center;padding:48px 0}.hero h1{font-size:2.4rem;margin:0 0 12px}.accent{color:var(--accent)}.sub{color:var(--muted);font-size:1.1rem}.hero-links{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-top:20px}.btn{display:inline-block;padding:10px 20px;background:var(--accent);color:#fff;border-radius:8px;text-decoration:none;font-weight:600;border:none;cursor:pointer;font-size:.95rem}.btn:hover{opacity:.9}.muted{color:var(--muted)}.cards{display:grid;gap:16px;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));margin-top:16px}.card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:20px;color:var(--fg);text-decoration:none}.card h3{margin:0 0 8px}.ver{color:var(--accent);font-size:.9rem}.post-list{list-style:none;padding:0}.post-list li{display:flex;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--border)}.post-list a{color:var(--accent);text-decoration:none}textarea,input,select{width:100%;padding:10px;margin:8px 0;border-radius:8px;border:1px solid var(--border);background:var(--card);color:var(--fg);font-family:inherit;font-size:1rem}pre{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:12px;overflow:auto;word-break:break-all;white-space:pre-wrap}footer{border-top:1px solid var(--border);text-align:center;padding:32px 24px;color:var(--muted)}footer a{color:var(--accent);text-decoration:none}
+</style></head> <body> <header class="nav"> <a class="brand" href="/my-site/">我的网站</a> <nav> <a href="/my-site/">首页</a><a href="/my-site/toolbox/">工具箱</a><a href="/my-site/blog/">博客</a><a href="/my-site/firmware/">固件</a> </nav> </header> <main class="container">  <h1>我的工具（本地管理）</h1> <p class="muted">把任意 <code>.html</code> 网页工具拖进来，即可加入本页并使用；也支持删除。</p> <div id="dropzone" style="border:2px dashed var(--border); border-radius:14px; padding:36px 20px; text-align:center; cursor:pointer; margin:20px 0; transition:.15s;"> <p style="margin:0 0 6px; font-size:1.05rem;">📥 点击选择，或把 .html 文件拖到这里</p> <p class="muted" style="margin:0; font-size:.9rem;">可一次选多个；支持单个完整网页工具</p> <input id="fileInput" type="file" accept=".html,.htm" multiple style="display:none"> </div> <p id="msg" class="muted" style="min-height:1.2em;"></p> <h2 style="margin-top:1.5rem">已添加的工具 <span id="count" class="ver"></span></h2> <div id="list" class="cards"></div> <p class="muted" style="margin-top:2rem; font-size:.85rem;">
+⚠️ 说明：这些工具保存在你<strong>当前浏览器</strong>中，刷新或重开浏览器仍在；但换设备、清理浏览器数据后会丢失。
+    若希望工具变成网站的一部分、让所有人访问都能看到，请告诉我，我帮你固化进项目并重新部署。
+</p>  </main> <footer> <p>© 2026 你的名字 · <a href="/my-site/firmware/">固件</a> · <a href="/my-site/toolbox/">工具箱</a></p> <p class="muted">由 Astro + GitHub Pages 免费托管</p> </footer> </body></html> <script>
+(() => {
+  const DB_NAME = 'mytools', STORE = 'tools';
+  let db = null;
+  const $ = (s) => document.querySelector(s);
+  const dropzone = $('#dropzone');
+  const fileInput = $('#fileInput');
+  const listEl = $('#list');
+  const msgEl = $('#msg');
+  const countEl = $('#count');
+
+  function openDB() {
+    return new Promise((resolve, reject) => {
+      const r = indexedDB.open(DB_NAME, 1);
+      r.onupgradeneeded = (e) => {
+        const d = e.target.result;
+        if (!d.objectStoreNames.contains(STORE)) d.createObjectStore(STORE, { keyPath: 'id' });
+      };
+      r.onsuccess = (e) => { db = e.target.result; resolve(db); };
+      r.onerror = () => reject(r.error);
+    });
+  }
+
+  function store(mode) { return db.transaction(STORE, mode).objectStore(STORE); }
+
+  function addTool(t) {
+    return new Promise((res, rej) => {
+      const r = store('readwrite').put(t);
+      r.onsuccess = res; r.onerror = () => rej(r.error);
+    });
+  }
+  function listTools() {
+    return new Promise((res, rej) => {
+      const r = store('readonly').getAll();
+      r.onsuccess = () => {
+        const a = (r.result || []).sort((x, y) => y.addedAt - x.addedAt);
+        res(a);
+      };
+      r.onerror = () => rej(r.error);
+    });
+  }
+  function delTool(id) {
+    return new Promise((res, rej) => {
+      const r = store('readwrite').delete(id);
+      r.onsuccess = res; r.onerror = () => rej(r.error);
+    });
+  }
+
+  function fmt(ts) {
+    const d = new Date(ts);
+    const p = (n) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+  }
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+
+  async function render() {
+    const tools = await listTools();
+    countEl.textContent = tools.length ? `（共 ${tools.length} 个）` : '';
+    if (!tools.length) {
+      listEl.innerHTML = '<p class="muted">还没有工具，拖一个 .html 进来试试。</p>';
+      return;
+    }
+    listEl.innerHTML = tools.map((t) => `
+      <div class="card" style="display:flex; flex-direction:column; gap:10px;">
+        <div>
+          <h3 style="margin:0 0 4px;">${escapeHtml(t.name)}</h3>
+          <p class="muted" style="margin:0; font-size:.82rem;">添加于 ${fmt(t.addedAt)}</p>
+        </div>
+        <div style="display:flex; align-items:center; gap:10px;">
+          <button class="btn" data-open="${t.id}" style="flex:1;">打开</button>
+          <button data-del="${t.id}" title="删除该工具" style="flex:0 0 auto; background:none; border:1px solid transparent; color:var(--muted); font-size:.82rem; cursor:pointer; padding:6px 10px; border-radius:6px;" onmouseover="this.style.color='#ff6b6b';this.style.borderColor='var(--border)'" onmouseout="this.style.color='var(--muted)';this.style.borderColor='transparent'">删除</button>
+        </div>
+      </div>
+    `).join('');
+  }
+
+  function openTool(html) {
+    const blob = new Blob([html], { type: 'text/html' });
+    const url = URL.createObjectURL(blob);
+    window.open(url, '_blank');
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+  }
+
+  listEl.addEventListener('click', async (e) => {
+    const openId = e.target.getAttribute('data-open');
+    const delId = e.target.getAttribute('data-del');
+    if (openId) {
+      const t = (await listTools()).find((x) => x.id === openId);
+      if (t) openTool(t.html);
+    }
+    if (delId) {
+      const t = (await listTools()).find((x) => x.id === delId);
+      const name = t ? t.name : '该工具';
+      if (confirm(`确定删除「${name}」吗？此操作不可恢复。`)) {
+        await delTool(delId);
+        msgEl.textContent = `已删除：${name}`;
+        render();
+      }
+    }
+  });
+
+  async function handleFiles(files) {
+    let ok = 0, skip = 0;
+    for (const f of files) {
+      if (!/\.html?$/i.test(f.name)) { skip++; continue; }
+      try {
+        const html = await f.text();
+        await addTool({ id: crypto.randomUUID(), name: f.name, html, addedAt: Date.now() });
+        ok++;
+      } catch (err) { skip++; }
+    }
+    msgEl.textContent = `已添加 ${ok} 个${skip ? `，跳过 ${skip} 个非 .html 文件` : ''}。`;
+    render();
+  }
+
+  dropzone.addEventListener('click', () => fileInput.click());
+  fileInput.addEventListener('change', () => { handleFiles(fileInput.files); fileInput.value = ''; });
+  ['dragenter','dragover'].forEach((ev) => dropzone.addEventListener(ev, (e) => { e.preventDefault(); dropzone.style.borderColor = 'var(--accent)'; }));
+  ['dragleave','drop'].forEach((ev) => dropzone.addEventListener(ev, (e) => { e.preventDefault(); dropzone.style.borderColor = 'var(--border)'; }));
+  dropzone.addEventListener('drop', (e) => {
+    if (e.dataTransfer && e.dataTransfer.files) handleFiles(e.dataTransfer.files);
+  });
+
+  openDB().then(render).catch((err) => { msgEl.textContent = '本地存储不可用：' + err; });
+})();
+</script>
